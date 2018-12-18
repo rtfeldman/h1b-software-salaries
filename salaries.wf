@@ -1,0 +1,46 @@
+get salaries
+    * salaries : Salaries
+
+
+record Objects
+    * counties : GeometryCollection
+    * states : GeometryCollection
+    * land : MultiPolygon
+
+
+record GeometryCollection
+    ? bbox : BBox
+    * geometries : Array Geometry
+
+
+record Transform
+    * scale : Pair Float64 Float64
+    * translate : Pair Float64 Float64
+
+
+record Pair f s
+    * first f
+    * second s
+
+
+record BBox
+    * first : Float32
+    * second : Float32
+    * third : Float32
+    * fourth : Float32
+
+
+type Geometry
+    | Polygon Id (Array Arc)
+    | MultiPolygon Id (Array Arc)
+
+
+type Salaries
+    | Topology Objects (Array Arc) Transform
+
+
+type Id
+    | Id Int32
+
+
+type alias Arc = Array (Array Int32)
