@@ -43,4 +43,4 @@ type Id
     | Id Int32
 
 
-type alias Arc = Array (Array Int32)
+type alias Arc = Array Int32
