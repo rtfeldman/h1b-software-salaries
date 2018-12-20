@@ -30,14 +30,31 @@ function decodeObjects(dv, addr) {
   var objAddr = dv.getUint32(addr, true);
   var ptable = dv.getUint32(addr + 4, true);
 
-  // TODO
+  // TODO check if ptable is missing any required entries
+  
+// record Objects
+//     * counties : GeometryCollection
+//     * states : GeometryCollection
+//     * land : MultiPolygon
+
 }
 
 function decodeTransform(dv, addr) {
-  var objAddr = dv.getUint32(addr, true);
+  var ptrAddr = dv.getUint32(addr, true);
   var ptable = dv.getUint32(addr + 4, true);
 
-  // TODO
+  // TODO check if ptable is missing any required entries
+  
+  return {
+    scale: [
+      dv.getFloat64(ptrAddr * 8, true),
+      dv.getFloat64((ptrAddr + 1) * 8, true),
+    ],
+    transform: [
+      dv.getFloat64((ptrAddr + 2) * 8, true),
+      dv.getFloat64((ptrAddr + 3) * 8, true),
+    ]
+  };
 }
 
 function decodeArcs(dv, addr) {
@@ -121,29 +138,35 @@ function encodeObjects(dv, addr, nextAddr, objects) {
   return nextAddr + 3; // Advance past Objects record's 3 fields
 }
 
-function encodeTransform(dv, addr, nextAddr, objects) {
+function encodeTransform(dv, addr, nextAddr, transform) {
   dv.setUint32(addr, nextAddr, true);
-  dv.setUint32(addr + 4, 0x11, true); // presence table for Transform record
+  dv.setUint32(addr + 4, 0x1111, true); // presence table for Transform record
 
-  return nextAddr + 1; // Advance past my 1 pointer.
+  dv.setFloat64(nextAddr++ * 8, transform.scale[0], true);
+  dv.setFloat64(nextAddr++ * 8, transform.scale[1], true);
+  dv.setFloat64(nextAddr++ * 8, transform.translate[0], true);
+  dv.setFloat64(nextAddr++ * 8, transform.translate[1], true);
+ 
+  return nextAddr;
 }
+
 
 function encodeArcs(dv, addr, nextAddr, arcs) {
   // Leave it at all 0s if it's an empty collection.
-  if (arcs.length !== 0) {
-    dv.setUint32(addr, nextAddr, true);
-    dv.setUint32(addr + 4, arcs.length, true);
+  if (arcs.length === 0) {
+    return nextAddr;
+  } 
 
-    var nextArcAddr = nextAddr + arcs.length; // Advance past the array elements
+  dv.setUint32(addr, nextAddr, true);
+  dv.setUint32(addr + 4, arcs.length, true);
 
-    for (var i=0; i < arcs.length; i++) {
-      nextArcAddr = encodeInt32Array(dv, (nextAddr++ * 8), nextArcAddr, arcs[i]);
-    }
+  var nextArcAddr = nextAddr + arcs.length; // Advance past the array elements
 
-    nextAddr = nextArcAddr;
+  for (var i=0; i < arcs.length; i++) {
+    nextArcAddr = encodeInt32Array(dv, (nextAddr++ * 8), nextArcAddr, arcs[i]);
   }
 
-  return nextAddr;
+  return nextArcAddr;
 }
 
 function encodeInt32Array(dv, addr, nextAddr, ints) {
@@ -197,5 +220,5 @@ verify({
   type: "Topology",
   objects: 1.2,
   arcs: [[1], [2, 3], [44, 55, 66], [], [77]],
-  transform: 5.6
+  transform: {scale: [ 5, 6 ], translate: [ 7.2, 8.3 ]}
 });

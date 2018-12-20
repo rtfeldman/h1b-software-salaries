@@ -14,13 +14,10 @@ record GeometryCollection
 
 
 record Transform
-    * scale : Pair Float64 Float64
-    * translate : Pair Float64 Float64
-
-
-record Pair f s
-    * first f
-    * second s
+    * scaleX : Float64
+    * scaleY : Float64
+    * translateX : Float64
+    * translateY : Float64
 
 
 record BBox
