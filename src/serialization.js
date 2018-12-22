@@ -35,8 +35,7 @@ function decodeObjects(dv, addr) {
 // record Objects
 //     * counties : GeometryCollection
 //     * states : GeometryCollection
-//     * land : MultiPolygon
-
+//     * land : Geometry
 }
 
 function decodeTransform(dv, addr) {
@@ -216,9 +215,12 @@ function verify(data) {
   }
 }
 
-verify({
+// TODO read this from us.json
+var rawData = {
   type: "Topology",
   objects: 1.2,
   arcs: [[1], [2, 3], [44, 55, 66], [], [77]],
   transform: {scale: [ 5, 6 ], translate: [ 7.2, 8.3 ]}
-});
+};
+
+verify(rawData);

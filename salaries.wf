@@ -5,7 +5,7 @@ get salaries
 record Objects
     * counties : GeometryCollection
     * states : GeometryCollection
-    * land : MultiPolygon
+    * land : Geometry
 
 
 record GeometryCollection
@@ -28,8 +28,13 @@ record BBox
 
 
 type Geometry
-    | Polygon Id (Array Arc)
-    | MultiPolygon Id (Array Arc)
+    | Polygon Shape
+    | MultiPolygon Shape
+
+
+record Shape
+    * id : Id
+    * arcs : Array Arc
 
 
 type Salaries
