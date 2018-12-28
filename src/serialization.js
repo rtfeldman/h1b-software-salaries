@@ -1,4 +1,31 @@
 
+function logBytes(bytes) {
+  let str = "";
+
+  for (let i=0; i < bytes.length; i++) {
+    if (i % 8 === 0) {
+      str += "\n\n" + (i + 1) + ")\t";
+    } 
+
+    const byte = bytes[i];
+
+    str += byte & 0b1;
+    str += byte & 0b10;
+    str += byte & 0b100;
+    str += byte & 0b1000;
+
+    str += " ";
+
+    str += byte & 0b10000;
+    str += byte & 0b100000;
+    str += byte & 0b1000000;
+    str += byte & 0b10000000;
+
+    str += "   ";
+  }
+
+}
+
 
 function decode(bytes) {
   var dv = new DataView(bytes);
