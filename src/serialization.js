@@ -54,16 +54,15 @@ function decodeTopology(dv, addr, ptable) {
 }
 
 function decodeObjects(dv, addr) {
-  var objAddr = dv.getUint32(addr, true) * 8;
+  var objAddr = dv.getUint32(addr, true);
   var ptable = dv.getUint32(addr + 4, true);
 
   // TODO check if ptable is missing any required entries
   
-  return {
-    counties: decodeGeometryCollection(dv, objAddr),
-    states: decodeGeometryCollection(dv, objAddr + 8),
-    // land: decodeGeometry(dv, (objAdder + 2) * 8)
-  };
+// record Objects
+//     * counties : GeometryCollection
+//     * states : GeometryCollection
+//     * land : Geometry
 }
 
 function decodeTransform(dv, addr) {
@@ -83,45 +82,6 @@ function decodeTransform(dv, addr) {
     ]
   };
 }
-
-function decodeGeometryCollection(dv, addr) {
-  var ptrAddr = dv.getUint32(addr, true);
-  var ptable = dv.getUint32(addr + 4, true);
-
-  if (ptable & 0x1 !== 0x1) {
-    decodingError("Missing required field \"geometries\"");
-  }
-
-  var result = {
-    geometries: decodeGeometries(dv, ptrAddr)
-  };
-
-  if (ptable & 0x10 === 0x10) {
-    // BBox is present.
-    result.bbox = decodeBBox(dv, (ptrAddr + 1) * 8);
-  }
-
-  return result;
-}
-
-function decodeGeometries(dv, addr) {
-  return [];
-}
-
-function decodeBBox(dv, addr) {
-  var ptrAddr = dv.getUint32(addr, true);
-  var ptable = dv.getUint32(addr + 4, true);
-
-  // TODO check if ptable is missing any required entries
-  
-  return [
-    dv.getFloat32(ptrAddr * 8, true),
-    dv.getFloat32((ptrAddr + 1) * 8, true),
-    dv.getFloat32((ptrAddr + 2) * 8, true),
-    dv.getFloat32((ptrAddr + 3) * 8, true),
-  ];
-}
-
 
 function decodeArcs(dv, addr) {
   var arcsAddr = dv.getUint32(addr, true);
@@ -187,38 +147,6 @@ function encode(data) {
   encodingError(data, "I couldn't encode this unknown variant type: " + data.type);
 }
 
-function encodeGeometryCollection(dv, addr, nextAddr, geometries, bbox) {
-  var ptable = 
-    bbox == null
-      ? 0x01
-      : 0x11;
-
-  dv.setUint32(addr, nextAddr, true);
-  dv.setUint32(addr + 4, ptable, true); // presence table for GeometryCollection record
-
-  var fieldAddr = nextAddr * 8;
-
-  nextAddr += 1; // Advance past this GeometryCollection record's 1 required field
-
-  if (bbox != null) {
-    nextAddr += 1; // Advance past this GeometryCollection record's 1 optional field which happened to be present
-  }
- 
-  nextAddr = encodeGeometries(dv, fieldAddr, nextAddr, geometries); 
-
-  if (bbox != null) {
-    nextAddr = encodeBBox(dv, fieldAddr + 8, nextAddr, bbox); 
-  }
-
-  return nextAddr;
-}
-
-
-function encodeGeometries(dv, addr, nextAddr, geometries) {
-  return nextAddr;
-}
-
-
 function encodeTopology(dv, addr, nextAddr, objects, arcs, transform) {
   nextAddr += 3; // Advance past this Topology record's 3 fields
  
@@ -231,18 +159,9 @@ function encodeTopology(dv, addr, nextAddr, objects, arcs, transform) {
 
 function encodeObjects(dv, addr, nextAddr, objects) {
   dv.setUint32(addr, nextAddr, true);
-  dv.setUint32(addr + 3, 0x111, true); // presence table for Objects record
+  dv.setUint32(addr + 4, 0x111, true); // presence table for Objects record
 
-  var fieldAddr = nextAddr * 8;
-
-  // Advance past Objects record's 3 fields
-  nextAddr += 3;
-
-  nextAddr = encodeGeometryCollection(dv, fieldAddr,      nextAddr, objects.counties); 
-  nextAddr = encodeGeometryCollection(dv, fieldAddr + 8,  nextAddr, objects.states);
-  // nextAddr = encodeGeometry(          dv, fieldAddr + 16, nextAddr, objects.land);
-
-  return nextAddr + 3;
+  return nextAddr + 3; // Advance past Objects record's 3 fields
 }
 
 function encodeTransform(dv, addr, nextAddr, transform) {
@@ -256,19 +175,6 @@ function encodeTransform(dv, addr, nextAddr, transform) {
  
   return nextAddr;
 }
-
-function encodeBBox(dv, addr, nextAddr, bbox) {
-  dv.setUint32(addr, nextAddr, true);
-  dv.setUint32(addr + 4, 0x1111, true); // presence table for BBox record
-
-  dv.setFloat32(nextAddr++ * 8, bbox[0], true);
-  dv.setFloat32(nextAddr++ * 8, bbox[1], true);
-  dv.setFloat32(nextAddr++ * 8, bbox[2], true);
-  dv.setFloat32(nextAddr++ * 8, bbox[3], true);
- 
-  return nextAddr;
-}
-
 
 
 function encodeArcs(dv, addr, nextAddr, arcs) {
@@ -339,11 +245,7 @@ function verify(data) {
 // TODO read this from us.json
 var rawData = {
   type: "Topology",
-  objects: {
-    counties: {bbox: [0.1, 0.2, 0.3, 0.5], geometries: []},
-    states: {geometries: []}
-    // land: ...
-  },
+  objects: 1.2,
   arcs: [[1], [2, 3], [44, 55, 66], [], [77]],
   transform: {scale: [ 5, 6 ], translate: [ 7.2, 8.3 ]}
 };

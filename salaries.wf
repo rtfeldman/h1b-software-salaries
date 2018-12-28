@@ -9,7 +9,7 @@ record Objects
 
 
 record GeometryCollection
-    ~ bbox : BBox
+    ? bbox : BBox
     * geometries : Array Geometry
 
 
