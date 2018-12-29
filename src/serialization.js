@@ -1,4 +1,11 @@
 
+// TERMINOLOGY
+//
+// dv = "DataView"
+// waddr = "word address"
+// baddr = "byte address"
+
+
 function logBytes(highlights, bytes) {
   let dv = new DataView(bytes);
   let str = "\n\x1B[7m                                                                                                                                           \n           " +
@@ -12,32 +19,38 @@ function logBytes(highlights, bytes) {
       str += "\n\x1B[7m";
       str += "        \u001b[0m                                                                                                   \x1B[7m                                \n";
       // str += ((i + 1).toString() + " - " + (i + 8).toString() + "  ").padStart(16, ' ');
-      str += (((i / 8) + 1).toString() + "  ").padStart(8, ' ');
+      str += ((i / 8).toString() + "  ").padStart(8, ' ');
       str += "\u001b[0m";
       str += "   ";
     } 
 
     const byteStr = dv.getUint8(i).toString(2).padStart(8, '0');
-    let highlight = {start: "", end: ""};
+    let highlight = {first: "", second: ""};
 
     if (i < 8) {
-      highlight.start = "\u001b[31m";
-      highlight.end = "x";
+      highlight.first = "\u001b[31m";
+      highlight.second = highlight.first;
+    } else if (i % 8 < 4) {
+      highlight.first = "\u001b[32m";
+      highlight.second = "\u001b[32m";
+    } else {
+      highlight.first = "\u001b[36m";
+      highlight.second = "\u001b[36m";
     }
 
-    str += highlight.start + byteStr.slice(0, 4);
+    str += highlight.first + byteStr.slice(0, 4);
 
     str += " ";
 
-    str += byteStr.slice(-4);
+    str += highlight.second + byteStr.slice(-4);
 
     str += "\u001b[0m   ";
 
     if (i % 8 === 7) {
       str += "\x1B[7m  ";
       try {
-        const u32one = dv.getUint32(i, true);
-        const u32two = dv.getUint32(i + 4, true);
+        const u32one = dv.getUint32(i - 7, true);
+        const u32two = dv.getUint32(i - 7 + 4, true);
 
         // str += (((i - 7) / 8) + 1).toString().padEnd(8, ' ');
         str += (u32one + " • " + u32two).padEnd(30, ' ');
@@ -165,7 +178,37 @@ function encode(data) {
       dv.setUint16(4, 0x1, true); // 0x1 is the "Topology" variant
       dv.setUint16(6, 0x111, true); // The "Topoloy" variant holds a record; this is its ptable
       
-      encodeTopology(dv, 8, 2, data.objects, data.arcs, data.transform);
+      encodeRecord(dv, 8, 2, [
+        (dv, baddr, nextFreeWaddr) => { return encodeFloat64(dv, baddr, nextFreeWaddr, data.objects); },
+        (dv, baddr, nextFreeWaddr) => {
+          // Leave it at all 0s if it's an empty collection.
+          if (data.arcs.length === 0) {
+            return nextFreeWaddr;
+          } 
+
+          encodeArrayPtr(dv, baddr, nextFreeWaddr, data.arcs.length);
+
+          return encodeArray(dv, nextFreeWaddr, 8, data.arcs,
+            (dv, waddr, nextFreeWaddr, subarray) => {
+              // Leave it at all 0s if it's an empty collection.
+              if (subarray.length === 0) {
+                return nextFreeWaddr;
+              } 
+
+              encodeArrayPtr(dv, waddr * 8, nextFreeWaddr, subarray.length);
+
+              return encodeArray(dv, nextFreeWaddr, 4, subarray,
+                (dv, waddr, nextFreeWaddr, i32) => {
+                  dv.setUint32(waddr * 8, i32, true);
+
+                  return nextFreeWaddr;
+                }
+              );
+            }
+          );
+        },
+        (dv, baddr, nextFreeWaddr) => { return encodeTransform(dv, baddr, nextFreeWaddr, data.transform); },
+      ]);
 
       return dv.buffer;
   }
@@ -173,21 +216,37 @@ function encode(data) {
   encodingError(data, "I couldn't encode this unknown variant type: " + data.type);
 }
 
-function encodeTopology(dv, addr, nextAddr, objects, arcs, transform) {
-  nextAddr += 3; // Advance past this Topology record's 3 fields
- 
-  nextAddr = encodeObjects(  dv, addr,      nextAddr, objects); 
-  nextAddr = encodeArcs(     dv, addr + 8,  nextAddr, arcs);
-  nextAddr = encodeTransform(dv, addr + 16, nextAddr, transform);
+function encodeArray(dv, waddr, elemSize, arr, encodeElem) {
+  // Skip past the addresses we're about to use up with the elements.
+  // Round to the nearest word, for word alignment.
+  let nextFreeWaddr = waddr + Math.ceil((arr.length * elemSize) / 8);
 
-  return nextAddr;
+  for (let i=0; i < arr.length; i++) {
+    nextFreeWaddr = encodeElem(dv, waddr + i, nextFreeWaddr, arr[i]);
+  }
+
+  return nextFreeWaddr;
 }
 
-function encodeObjects(dv, addr, nextAddr, objects) {
-  dv.setUint32(addr, nextAddr, true);
-  dv.setUint32(addr + 4, 0x111, true); // presence table for Objects record
+function encodeArrayPtr(dv, ptrByteAddr, destWaddr, length) {
+  dv.setUint32(ptrByteAddr, destWaddr, true);
+  dv.setUint32(ptrByteAddr + 4, length, true);
+}
 
-  return nextAddr + 3; // Advance past Objects record's 3 fields
+function encodeRecord(dv, baddr, nextFreeWaddr, encoders) {
+  nextFreeWaddr += encoders.length; // Advance past this record's N fields
+
+  for (var i=0; i < encoders.length; i++) {
+    nextFreeWaddr = encoders[i](dv, baddr + (i * 8), nextFreeWaddr); 
+  }
+
+  return nextFreeWaddr;
+}
+
+function encodeFloat64(dv, baddr, nextFreeWaddr, val) {
+  dv.setFloat64(baddr, val, true);
+
+  return nextFreeWaddr;
 }
 
 function encodeTransform(dv, addr, nextAddr, transform) {
@@ -200,25 +259,6 @@ function encodeTransform(dv, addr, nextAddr, transform) {
   dv.setFloat64(nextAddr++ * 8, transform.translate[1], true);
  
   return nextAddr;
-}
-
-
-function encodeArcs(dv, addr, nextAddr, arcs) {
-  // Leave it at all 0s if it's an empty collection.
-  if (arcs.length === 0) {
-    return nextAddr;
-  } 
-
-  dv.setUint32(addr, nextAddr, true);
-  dv.setUint32(addr + 4, arcs.length, true);
-
-  var nextArcAddr = nextAddr + arcs.length; // Advance past the array elements
-
-  for (var i=0; i < arcs.length; i++) {
-    nextArcAddr = encodeInt32Array(dv, (nextAddr++ * 8), nextArcAddr, arcs[i]);
-  }
-
-  return nextArcAddr;
 }
 
 function encodeInt32Array(dv, addr, nextAddr, ints) {
@@ -279,7 +319,8 @@ const highlights = {
 var rawData = {
   type: "Topology",
   objects: 1.2,
-  arcs: [[1], [2, 3], [44, 55, 66], [], [77]],
+  // arcs: [[1], [2, 3], [44, 55, 66], [], [77]],
+  arcs: [[]],
   transform: {scale: [ 5, 6 ], translate: [ 7.2, 8.3 ]}
 };
 
