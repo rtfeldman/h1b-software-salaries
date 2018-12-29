@@ -1,29 +1,45 @@
 
-function logBytes(bytes) {
-  let str = "";
+function logBytes(highlights, bytes) {
+  let dv = new DataView(bytes);
+  let str = "\n\x1B[7m                                                                                                                             \n                   " +
+      [1,2,3,4,5,6,7,8].map((num) => { return "    " + num + "    "; }).join("   ") +
+      "             \n                   " +
+    [1,2,3,4,5,6,7,8].map((num) => { return "         "; }).join("   ") +
+    "             ";
 
-  for (let i=0; i < bytes.length; i++) {
+  for (let i=0; i < bytes.byteLength; i++) {
     if (i % 8 === 0) {
-      str += "\n\n" + (i + 1) + ")\t";
+      str += "\n\x1B[7m";
+      str += "                \u001b[0m                                                                                                   \x1B[7m          \n";
+      str += ((i + 1).toString() + " - " + (i + 8).toString() + "  ").padStart(16, ' ');
+      str += "\u001b[0m";
+      str += "   ";
     } 
 
-    const byte = bytes[i];
+    const byteStr = dv.getUint8(i).toString(2).padStart(8, '0');
+    let highlight = {start: "", end: ""};
 
-    str += byte & 0b1;
-    str += byte & 0b10;
-    str += byte & 0b100;
-    str += byte & 0b1000;
+    if (i < 8) {
+      highlight.start = "\u001b[31m";
+      highlight.end = "x";
+    }
+
+    str += highlight.start + byteStr.slice(0, 4);
 
     str += " ";
 
-    str += byte & 0b10000;
-    str += byte & 0b100000;
-    str += byte & 0b1000000;
-    str += byte & 0b10000000;
+    str += byteStr.slice(-4);
 
-    str += "   ";
+    str += "\u001b[0m   ";
+
+    if (i % 8 === 7) {
+      str += "\x1B[7m  ";
+      str += (((i - 7) / 8) + 1).toString().padEnd(8, ' ');
+      str += "\u001b[0m";
+    } 
   }
 
+  return str;
 }
 
 
@@ -130,7 +146,7 @@ function decodeInt32Array(dv, addr) {
 }
 
 function encode(data) {
-  var bytes = new ArrayBuffer(20000); // TODO dynamic allocation
+  var bytes = new ArrayBuffer(195); // TODO dynamic allocation
   var dv = new DataView(bytes);
   
   switch (data.type) {
@@ -238,9 +254,16 @@ function verify(data) {
   } else {
     console.log("Failed! Expected:\n\n", jsonEncoded, "\n\n", "but got:\n\n", JSON.stringify(decoded), "\n\n");
 
+    console.log("Raw Bytes:\n");
+    console.log(logBytes(highlights, binaryEncoded));
+
     return false;
   }
 }
+
+const highlights = {
+
+};
 
 // TODO read this from us.json
 var rawData = {
