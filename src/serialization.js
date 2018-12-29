@@ -1,17 +1,18 @@
 
 function logBytes(highlights, bytes) {
   let dv = new DataView(bytes);
-  let str = "\n\x1B[7m                                                                                                                             \n                   " +
-      [1,2,3,4,5,6,7,8].map((num) => { return "    " + num + "    "; }).join("   ") +
-      "             \n                   " +
-    [1,2,3,4,5,6,7,8].map((num) => { return "         "; }).join("   ") +
-    "             ";
+  let str = "\n\x1B[7m                                                                                                                                           \n           " +
+      [0, 1,2,3,4,5,6,7].map((num) => { return "    " + num + "    "; }).join("   ") +
+      "                                   \n                   " +
+    [0,1,2,3,4,5,6,7].map((num) => { return "         "; }).join("   ") +
+    "                           ";
 
   for (let i=0; i < bytes.byteLength; i++) {
     if (i % 8 === 0) {
       str += "\n\x1B[7m";
-      str += "                \u001b[0m                                                                                                   \x1B[7m          \n";
-      str += ((i + 1).toString() + " - " + (i + 8).toString() + "  ").padStart(16, ' ');
+      str += "        \u001b[0m                                                                                                   \x1B[7m                                \n";
+      // str += ((i + 1).toString() + " - " + (i + 8).toString() + "  ").padStart(16, ' ');
+      str += (((i / 8) + 1).toString() + "  ").padStart(8, ' ');
       str += "\u001b[0m";
       str += "   ";
     } 
@@ -34,8 +35,17 @@ function logBytes(highlights, bytes) {
 
     if (i % 8 === 7) {
       str += "\x1B[7m  ";
-      str += (((i - 7) / 8) + 1).toString().padEnd(8, ' ');
-      str += "\u001b[0m";
+      try {
+        const u32one = dv.getUint32(i, true);
+        const u32two = dv.getUint32(i + 4, true);
+
+        // str += (((i - 7) / 8) + 1).toString().padEnd(8, ' ');
+        str += (u32one + " • " + u32two).padEnd(30, ' ');
+      } catch (err) {
+        str += "".padEnd(30, ' ');
+      } finally {
+        str += "\u001b[0m";
+      }
     } 
   }
 
