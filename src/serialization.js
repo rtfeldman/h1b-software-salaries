@@ -87,7 +87,13 @@ function decodeTopology(dv, addr, ptable) {
   return {
     type: "Topology",
     objects: decodeObjects(dv, addr),
-    arcs: decodeArcs(dv, addr + 8),
+    arcs: decodeArray(dv, addr + 8, 8,
+      (dv, baddr) => {
+        return decodeArray(dv, baddr, 4,
+          (dv, baddr) => { return dv.getUint32(baddr, true); }
+        );
+      }
+    ),
     transform: decodeTransform(dv, addr + 16)
   };
 }
@@ -123,12 +129,12 @@ function decodeTransform(dv, addr) {
   };
 }
 
-function decodeArcs(dv, addr) {
-  var arcsAddr = dv.getUint32(addr, true);
-  var arcsLength = dv.getUint32(addr + 4, true);
+function decodeArray(dv, baddr, elemSize, decodeElem) {
+  const ptrWaddr = dv.getUint32(baddr, true);
+  const len = dv.getUint32(baddr + 4, true);
   
-  if (arcsLength === 0) {
-    if (arcsAddr === 0) {
+  if (len === 0) {
+    if (ptrWaddr === 0) {
       // empty collection; nothing to look up!
       return [];
     }
@@ -136,36 +142,14 @@ function decodeArcs(dv, addr) {
     throw "TODO handle superlong pointers.";
   } else {
     // Since length > 0 && address > 0, this is a normal pointer - look it up!
-    var arcs = new Array(arcsLength);
+    const ptrBaddr = ptrWaddr * 8;
+    let arr = new Array(len);
 
-    for (var i=0; i < arcsLength; i++) {
-      arcs[i] = decodeInt32Array(dv, (arcsAddr + i) * 8);
+    for (var i=0; i < len; i++) {
+      arr[i] = decodeElem(dv, ptrBaddr + (i * elemSize));
     }
 
-    return arcs;
-  }
-}
-
-function decodeInt32Array(dv, addr) {
-  var intsAddr = dv.getUint32(addr, true);
-  var intsLength = dv.getUint32(addr + 4, true);
-  
-  if (intsLength === 0) {
-    if (intsAddr === 0) {
-      // empty collection; nothing to look up!
-      return [];
-    }
-
-    throw "TODO handle superlong pointers.";
-  } else {
-    // Since length > 0 && address > 0, this is a normal pointer - look it up!
-    var ints = new Array(intsLength);
-
-    for (var i=0; i < intsLength; i++) {
-      ints[i] = dv.getInt32((intsAddr * 8) + (i * 4), true);
-    }
-
-    return ints;
+    return arr;
   }
 }
 
