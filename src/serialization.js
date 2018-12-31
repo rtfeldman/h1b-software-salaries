@@ -65,23 +65,6 @@ function logBytes(highlights, bytes) {
   return str;
 }
 
-function decodeTopology(dv, addr, ptable) {
-  // TODO check if ptable is missing any required entries
-  
-  return {
-    type: "Topology",
-    objects: decodeObjects(dv, addr),
-    arcs: decodeArray(dv, addr + 8, 8,
-      (dv, baddr) => {
-        return decodeArray(dv, baddr, 4,
-          (dv, baddr) => { return dv.getUint32(baddr, true); }
-        );
-      }
-    ),
-    transform: decodeTransform(dv, addr + 16)
-  };
-}
-
 function decodeObjects(dv, addr) {
   return dv.getFloat64(addr, true);
   var objAddr = dv.getUint32(addr, true);
@@ -111,6 +94,19 @@ function decodeTransform(dv, addr) {
       dv.getFloat64((ptrAddr + 3) * 8, true),
     ]
   };
+}
+
+function decodeRecord(dv, baddr, decodeFields) {
+  const ptrWaddr = dv.getUint32(baddr, true);
+  const ptable = dv.getUint32(baddr + 4, true);
+
+  verifyPtable(ptable, 0x0); // TODO check if ptable is missing any required entries
+
+  return decodeFields(dv, ptrWaddr * 8);
+}
+
+function verifyPtable(actual, expected) {
+  // TODO throw an exception if it's invalid
 }
 
 function decodeArray(dv, baddr, elemSize, decodeElem) {
@@ -174,18 +170,6 @@ function encodeFloat64(val) {
   };
 }
 
-function encodeTransform(dv, addr, nextAddr, transform) {
-  dv.setUint32(addr, nextAddr, true);
-  dv.setUint32(addr + 4, 0x1111, true); // presence table for Transform record
-
-  dv.setFloat64(nextAddr++ * 8, transform.scale[0], true);
-  dv.setFloat64(nextAddr++ * 8, transform.scale[1], true);
-  dv.setFloat64(nextAddr++ * 8, transform.translate[0], true);
-  dv.setFloat64(nextAddr++ * 8, transform.translate[1], true);
- 
-  return nextAddr;
-}
-
 function encodeInt32Array(dv, addr, nextAddr, ints) {
   // Leave it at all 0s if it's an empty collection.
   if (ints.length !== 0) {
@@ -236,12 +220,16 @@ function verify(data) {
       return false;
     }
   } catch(err) {
-    console.log("Failed! Exception:\n\n", err.stack);
+    if (err instanceof RangeError) {
+      console.log("Failed! Exception:\n\n", err.stack);
 
-    console.log("\nRaw Bytes:\n");
-    console.log(logBytes(highlights, binaryEncoded));
+      console.log("\nRaw Bytes:\n");
+      console.log(logBytes(highlights, binaryEncoded));
 
-    return false;
+      return false;
+    } else {
+      throw err;
+    }
   }
 }
 
@@ -307,15 +295,40 @@ function encode(data) {
 }
 
 function decode(bytes) {
-  var dv = new DataView(bytes);
-  var release = dv.getUint32(0, true);
-  var variantType = dv.getUint16(4, true);
+  const dv = new DataView(bytes);
+  const release = dv.getUint32(0, true);
+  const variantType = dv.getUint16(4, true);
 
   switch (variantType) {
     case 0x1: // Topology
-      var ptable = dv.getUint16(6, true);
+      const ptable = dv.getUint16(6, true);
+      const baddr = 8;
 
-      return decodeTopology(dv, 8, ptable);
+      verifyPtable(ptable, 0x0); // TODO check if ptable is missing any required entries
+
+      return {
+        type: "Topology",
+        objects: decodeObjects(dv, baddr),
+        arcs: decodeArray(dv, baddr + 8, 8,
+          (dv, baddr) => {
+            return decodeArray(dv, baddr, 4,
+              (dv, baddr) => { return dv.getUint32(baddr, true); }
+            );
+          }
+        ),
+        transform: decodeRecord(dv, baddr + 16, (dv, baddr) => {
+          return {
+            scale: [
+              dv.getFloat64(baddr, true),
+              dv.getFloat64(baddr + 8, true),
+            ],
+            translate: [
+              dv.getFloat64(baddr + 16, true),
+              dv.getFloat64(baddr + 24, true),
+            ]
+          };
+        })
+      };
   }
 
   decodingError(bytes, "I couldn't decode this unknown variant type: " + variantType);
@@ -323,7 +336,7 @@ function decode(bytes) {
 
 
 // TODO read this from us.json
-var rawData = {
+const rawData = {
   type: "Topology",
   objects: 1.2,
   arcs: [[1], [2, 3], [44, 55, 66], [], [77]],
