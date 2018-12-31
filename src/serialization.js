@@ -93,6 +93,7 @@ function decodeTopology(dv, addr, ptable) {
 }
 
 function decodeObjects(dv, addr) {
+  return dv.getFloat64(addr, true);
   var objAddr = dv.getUint32(addr, true);
   var ptable = dv.getUint32(addr + 4, true);
 
@@ -115,7 +116,7 @@ function decodeTransform(dv, addr) {
       dv.getFloat64(ptrAddr * 8, true),
       dv.getFloat64((ptrAddr + 1) * 8, true),
     ],
-    transform: [
+    translate: [
       dv.getFloat64((ptrAddr + 2) * 8, true),
       dv.getFloat64((ptrAddr + 3) * 8, true),
     ]
@@ -161,7 +162,7 @@ function decodeInt32Array(dv, addr) {
     var ints = new Array(intsLength);
 
     for (var i=0; i < intsLength; i++) {
-      ints[i] = dv.getInt32((intsAddr + i) * 8, true);
+      ints[i] = dv.getInt32((intsAddr * 8) + (i * 4), true);
     }
 
     return ints;
@@ -178,7 +179,7 @@ function encode(data) {
       dv.setUint16(4, 0x1, true); // 0x1 is the "Topology" variant
       dv.setUint16(6, 0x111, true); // The "Topoloy" variant holds a record; this is its ptable
       
-      encodeRecord(dv, 8, 2, [
+      encodeRecord(dv, 8, 1, [
         (dv, baddr, nextFreeWaddr) => { return encodeFloat64(dv, baddr, nextFreeWaddr, data.objects); },
         (dv, baddr, nextFreeWaddr) => {
           // Leave it at all 0s if it's an empty collection.
@@ -189,17 +190,17 @@ function encode(data) {
           encodeArrayPtr(dv, baddr, nextFreeWaddr, data.arcs.length);
 
           return encodeArray(dv, nextFreeWaddr, 8, data.arcs,
-            (dv, waddr, nextFreeWaddr, subarray) => {
+            (dv, baddr, nextFreeWaddr, subarray) => {
               // Leave it at all 0s if it's an empty collection.
               if (subarray.length === 0) {
                 return nextFreeWaddr;
               } 
 
-              encodeArrayPtr(dv, waddr * 8, nextFreeWaddr, subarray.length);
+              encodeArrayPtr(dv, baddr, nextFreeWaddr, subarray.length);
 
               return encodeArray(dv, nextFreeWaddr, 4, subarray,
-                (dv, waddr, nextFreeWaddr, i32) => {
-                  dv.setUint32(waddr * 8, i32, true);
+                (dv, baddr, nextFreeWaddr, val) => {
+                  dv.setUint32(baddr, val, true);
 
                   return nextFreeWaddr;
                 }
@@ -222,7 +223,7 @@ function encodeArray(dv, waddr, elemSize, arr, encodeElem) {
   let nextFreeWaddr = waddr + Math.ceil((arr.length * elemSize) / 8);
 
   for (let i=0; i < arr.length; i++) {
-    nextFreeWaddr = encodeElem(dv, waddr + i, nextFreeWaddr, arr[i]);
+    nextFreeWaddr = encodeElem(dv, (waddr * 8) + (i * elemSize), nextFreeWaddr, arr[i]);
   }
 
   return nextFreeWaddr;
@@ -319,8 +320,7 @@ const highlights = {
 var rawData = {
   type: "Topology",
   objects: 1.2,
-  // arcs: [[1], [2, 3], [44, 55, 66], [], [77]],
-  arcs: [[]],
+  arcs: [[1], [2, 3], [44, 55, 66], [], [77]],
   transform: {scale: [ 5, 6 ], translate: [ 7.2, 8.3 ]}
 };
 
