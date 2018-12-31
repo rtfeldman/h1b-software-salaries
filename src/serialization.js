@@ -65,22 +65,6 @@ function logBytes(highlights, bytes) {
   return str;
 }
 
-
-function decode(bytes) {
-  var dv = new DataView(bytes);
-  var release = dv.getUint32(0, true);
-  var variantType = dv.getUint16(4, true);
-
-  switch (variantType) {
-    case 0x1: // Topology
-      var ptable = dv.getUint16(6, true);
-
-      return decodeTopology(dv, 8, ptable);
-  }
-
-  decodingError(bytes, "I couldn't decode this unknown variant type: " + variantType);
-}
-
 function decodeTopology(dv, addr, ptable) {
   // TODO check if ptable is missing any required entries
   
@@ -153,53 +137,6 @@ function decodeArray(dv, baddr, elemSize, decodeElem) {
   }
 }
 
-function encode(data) {
-  var bytes = new ArrayBuffer(195); // TODO dynamic allocation
-  var dv = new DataView(bytes);
-  
-  switch (data.type) {
-    case "Topology":
-      dv.setUint32(0, 1, true); // This is Release #1
-      dv.setUint16(4, 0x1, true); // 0x1 is the "Topology" variant
-      dv.setUint16(6, 0x111, true); // The "Topoloy" variant holds a record; this is its ptable
-      
-      encodeRecord(dv, 8, 1, [
-        (dv, baddr, nextFreeWaddr) => { return encodeFloat64(dv, baddr, nextFreeWaddr, data.objects); },
-        (dv, baddr, nextFreeWaddr) => {
-          // Leave it at all 0s if it's an empty collection.
-          if (data.arcs.length === 0) {
-            return nextFreeWaddr;
-          } 
-
-          encodeArrayPtr(dv, baddr, nextFreeWaddr, data.arcs.length);
-
-          return encodeArray(dv, nextFreeWaddr, 8, data.arcs,
-            (dv, baddr, nextFreeWaddr, subarray) => {
-              // Leave it at all 0s if it's an empty collection.
-              if (subarray.length === 0) {
-                return nextFreeWaddr;
-              } 
-
-              encodeArrayPtr(dv, baddr, nextFreeWaddr, subarray.length);
-
-              return encodeArray(dv, nextFreeWaddr, 4, subarray,
-                (dv, baddr, nextFreeWaddr, val) => {
-                  dv.setUint32(baddr, val, true);
-
-                  return nextFreeWaddr;
-                }
-              );
-            }
-          );
-        },
-        (dv, baddr, nextFreeWaddr) => { return encodeTransform(dv, baddr, nextFreeWaddr, data.transform); },
-      ]);
-
-      return dv.buffer;
-  }
-
-  encodingError(data, "I couldn't encode this unknown variant type: " + data.type);
-}
 
 function encodeArray(dv, waddr, elemSize, arr, encodeElem) {
   // Skip past the addresses we're about to use up with the elements.
@@ -299,6 +236,70 @@ function verify(data) {
 const highlights = {
 
 };
+
+function encode(data) {
+  var bytes = new ArrayBuffer(195); // TODO dynamic allocation
+  var dv = new DataView(bytes);
+  
+  switch (data.type) {
+    case "Topology":
+      dv.setUint32(0, 1, true); // This is Release #1
+      dv.setUint16(4, 0x1, true); // 0x1 is the "Topology" variant
+      dv.setUint16(6, 0x111, true); // The "Topoloy" variant holds a record; this is its ptable
+      
+      encodeRecord(dv, 8, 1, [
+        (dv, baddr, nextFreeWaddr) => { return encodeFloat64(dv, baddr, nextFreeWaddr, data.objects); },
+        (dv, baddr, nextFreeWaddr) => {
+          // Leave it at all 0s if it's an empty collection.
+          if (data.arcs.length === 0) {
+            return nextFreeWaddr;
+          } 
+
+          encodeArrayPtr(dv, baddr, nextFreeWaddr, data.arcs.length);
+
+          return encodeArray(dv, nextFreeWaddr, 8, data.arcs,
+            (dv, baddr, nextFreeWaddr, subarray) => {
+              // Leave it at all 0s if it's an empty collection.
+              if (subarray.length === 0) {
+                return nextFreeWaddr;
+              } 
+
+              encodeArrayPtr(dv, baddr, nextFreeWaddr, subarray.length);
+
+              return encodeArray(dv, nextFreeWaddr, 4, subarray,
+                (dv, baddr, nextFreeWaddr, val) => {
+                  dv.setUint32(baddr, val, true);
+
+                  return nextFreeWaddr;
+                }
+              );
+            }
+          );
+        },
+        (dv, baddr, nextFreeWaddr) => { return encodeTransform(dv, baddr, nextFreeWaddr, data.transform); },
+      ]);
+
+      return dv.buffer;
+  }
+
+  encodingError(data, "I couldn't encode this unknown variant type: " + data.type);
+}
+
+function decode(bytes) {
+  var dv = new DataView(bytes);
+  var release = dv.getUint32(0, true);
+  var variantType = dv.getUint16(4, true);
+
+  switch (variantType) {
+    case 0x1: // Topology
+      var ptable = dv.getUint16(6, true);
+
+      return decodeTopology(dv, 8, ptable);
+  }
+
+  decodingError(bytes, "I couldn't decode this unknown variant type: " + variantType);
+}
+
 
 // TODO read this from us.json
 var rawData = {
