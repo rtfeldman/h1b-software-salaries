@@ -150,25 +150,28 @@ function encodeArray(dv, waddr, elemSize, arr, encodeElem) {
   return nextFreeWaddr;
 }
 
-function encodeArrayPtr(dv, ptrByteAddr, destWaddr, length) {
-  dv.setUint32(ptrByteAddr, destWaddr, true);
-  dv.setUint32(ptrByteAddr + 4, length, true);
+function encodeArrayOrRecordPtr(dv, ptrBaddr, destWaddr, lengthOrPtable) {
+  dv.setUint32(ptrBaddr, destWaddr, true);
+  dv.setUint32(ptrBaddr + 4, lengthOrPtable, true);
 }
 
-function encodeRecord(dv, baddr, nextFreeWaddr, encoders) {
-  nextFreeWaddr += encoders.length; // Advance past this record's N fields
+function encodeRecord(dv, waddr, encoders) {
+  let nextFreeWaddr = waddr + encoders.length; // Advance past this record's N fields
 
   for (var i=0; i < encoders.length; i++) {
-    nextFreeWaddr = encoders[i](dv, baddr + (i * 8), nextFreeWaddr); 
+    nextFreeWaddr = encoders[i](dv, (waddr + i) * 8, nextFreeWaddr); 
   }
 
   return nextFreeWaddr;
 }
 
-function encodeFloat64(dv, baddr, nextFreeWaddr, val) {
-  dv.setFloat64(baddr, val, true);
+  
+function encodeFloat64(val) {
+  return function(dv, baddr, nextFreeWaddr) {
+    dv.setFloat64(baddr, val, true);
 
-  return nextFreeWaddr;
+    return nextFreeWaddr;
+  };
 }
 
 function encodeTransform(dv, addr, nextAddr, transform) {
@@ -212,21 +215,30 @@ function verify(data) {
   // TODO time this step
   var binaryEncoded = encode(data);
 
-  // TODO time this step
-  var decoded = decode(binaryEncoded);
+  try {
+    // TODO time this step
+    var decoded = decode(binaryEncoded);
 
-  // TODO time this step
-  var jsonDecoded = JSON.parse(jsonEncoded);
+    // TODO time this step
+    var jsonDecoded = JSON.parse(jsonEncoded);
 
-  if (JSON.stringify(decoded) === jsonEncoded) {
-    console.log("Success!");
-    console.log("binary data size:", binaryEncoded.byteLength);
-    console.log("JSON string size:", JSON.stringify(jsonDecoded).length);
-    return true;
-  } else {
-    console.log("Failed! Expected:\n\n", jsonEncoded, "\n\n", "but got:\n\n", JSON.stringify(decoded), "\n\n");
+    if (JSON.stringify(decoded) === jsonEncoded) {
+      console.log("Success!");
+      console.log("binary data size:", binaryEncoded.byteLength);
+      console.log("JSON string size:", JSON.stringify(jsonDecoded).length);
+      return true;
+    } else {
+      console.log("Failed! Expected:\n\n", jsonEncoded, "\n\n", "but got:\n\n", JSON.stringify(decoded), "\n\n");
 
-    console.log("Raw Bytes:\n");
+      console.log("Raw Bytes:\n");
+      console.log(logBytes(highlights, binaryEncoded));
+
+      return false;
+    }
+  } catch(err) {
+    console.log("Failed! Exception:\n\n", err.stack);
+
+    console.log("\nRaw Bytes:\n");
     console.log(logBytes(highlights, binaryEncoded));
 
     return false;
@@ -247,15 +259,15 @@ function encode(data) {
       dv.setUint16(4, 0x1, true); // 0x1 is the "Topology" variant
       dv.setUint16(6, 0x111, true); // The "Topoloy" variant holds a record; this is its ptable
       
-      encodeRecord(dv, 8, 1, [
-        (dv, baddr, nextFreeWaddr) => { return encodeFloat64(dv, baddr, nextFreeWaddr, data.objects); },
+      encodeRecord(dv, 1, [
+        encodeFloat64(data.objects),
         (dv, baddr, nextFreeWaddr) => {
           // Leave it at all 0s if it's an empty collection.
           if (data.arcs.length === 0) {
             return nextFreeWaddr;
           } 
 
-          encodeArrayPtr(dv, baddr, nextFreeWaddr, data.arcs.length);
+          encodeArrayOrRecordPtr(dv, baddr, nextFreeWaddr, data.arcs.length);
 
           return encodeArray(dv, nextFreeWaddr, 8, data.arcs,
             (dv, baddr, nextFreeWaddr, subarray) => {
@@ -264,7 +276,7 @@ function encode(data) {
                 return nextFreeWaddr;
               } 
 
-              encodeArrayPtr(dv, baddr, nextFreeWaddr, subarray.length);
+              encodeArrayOrRecordPtr(dv, baddr, nextFreeWaddr, subarray.length);
 
               return encodeArray(dv, nextFreeWaddr, 4, subarray,
                 (dv, baddr, nextFreeWaddr, val) => {
@@ -276,7 +288,16 @@ function encode(data) {
             }
           );
         },
-        (dv, baddr, nextFreeWaddr) => { return encodeTransform(dv, baddr, nextFreeWaddr, data.transform); },
+        (dv, baddr, nextFreeWaddr) => {
+          encodeArrayOrRecordPtr(dv, baddr, nextFreeWaddr, 0x1111);
+
+          return encodeRecord(dv, nextFreeWaddr, [
+            encodeFloat64(data.transform.scale[0]),
+            encodeFloat64(data.transform.scale[1]),
+            encodeFloat64(data.transform.translate[0]),
+            encodeFloat64(data.transform.translate[1]),
+          ]);
+        },
       ]);
 
       return dv.buffer;
